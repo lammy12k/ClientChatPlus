@@ -168,6 +168,10 @@ tasks {
         duplicatesStrategy = DuplicatesStrategy.EXCLUDE
         isZip64 = true
 
+        mergeServiceFiles()
+        exclude("META-INF/services/uk.co.caprica.*")
+        exclude("META-INF/versions/**")
+
         relocate("org.commonmark", "com.kyfstore.ClientChatPlus.libs.commonmark")
         relocate("net.kyori", "com.kyfstore.ClientChatPlus.libs.kyori")
         relocate("uk.co.caprica.vlcj", "com.kyfstore.ClientChatPlus.libs.vlcj")
