@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "id": "${mod_id}",
+  "version": "${version}",
+  "name": "${mod_name}",
+  "description": "${mod_description}",
+  "authors": [
+    "lammy12k"
+  ],
+  "contact": {
+    "homepage": "https://github.com/lammy12k/clientchatplus",
+    "sources": "https://github.com/lammy12k/clientchatplus",
+    "issues": "https://github.com/lammy12k/clientchatplus/issues"
+  },
+  "license": "MIT",
+  "icon": "assets/clientchatplus/icon.png",
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "com.kyfstore.ClientChatPlus.ClientChatPlusFabric"
+    ],
+    "modmenu": [
+      "com.kyfstore.ClientChatPlus.config.ModMenuIntegration"
+    ]
+  },
+  "mixins": [
+    "${mod_id}.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=${gp.fabric_loader_version}",
+    "minecraft": "~${gp.minecraft_version}",
+    "java": ">=25",
+    "fabric-api": "*",
+    "yet_another_config_lib_v3": ">=${gp.yacl_version}"
+  },
+  "suggests": {
+    "modmenu": ">=${gp.modmenu_version}",
+    "watermedia": "*"
+  },
+  "custom": {
+    "modmenu": {
+      "links": {
+        "modmenu.modrinth": "https://modrinth.com/mod/clientchatplus",
+        "modmenu.curseforge": "https://curseforge.com/minecraft/mc-mods/clientchatplus",
+        "modmenu.github_releases": "https://github.com/lammy12k/clientchatplus/releases",
+        "modmenu.kofi": "https://ko-fi.com/lammy12k",
+        "modmenu.patreon": "https://patreon.com/cw/lammy12k"
+      },
+      "update_checker": true
+    }
+  }
+}
