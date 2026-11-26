@@ -2,6 +2,26 @@
 
 All notable changes to **ClientChatPlus** will be documented in this file.
 
+## - 2026-11-25
+
+### Added
+* **Click-to-Expand Media Lightbox:** Click any inline image, animated GIF, or video frame to open a centered fullscreen viewer with dimmed backdrop, full video playback controls, and `Esc` or click-outside dismissal.
+* **@Mention Highlighting & Ping Notifications:**
+  * Highlights messages mentioning your username (including self-mentions), `@everyone`, or `@here` with a warm amber tint and left accent bar.
+  * Plays a subtle configurable notification sound when pinged.
+  * Added a dedicated **`@ Mentions`** filter tab to the top chat toolbar.
+* **Markdown Blockquotes (`> `):** Lines starting with `> ` now render with a vertical gray accent bar and indented muted gray text.
+* **Dual Search Modes (`🔍 Text` & `👤 User`):**
+  * Filter messages by message text or strictly by sender username.
+  * Includes a live autocomplete dropdown of online players and recent chat senders with `Tab` completion.
+* **New YACL Configuration Options:**
+  * **Video Playback Backend:** Choose between `AUTO`, `VLC_ONLY`, `WATERMEDIA_ONLY`, or `DISABLED`.
+  * **Idle Chat Fade Duration:** Configure unfocused fade-out time from `1s` to `60s`, or set to `0` (`Never`).
+  * **Highlight Mentions** and **Mention Ping Sound** toggles.
+
+### Fixed
+* **NeoForge JPMS Module Startup Crash:** Merged service provider files and excluded un-relocated `META-INF/services/uk.co.caprica.*` descriptors from the shaded JAR so NeoForge's `ModuleFinder` loads the universal JAR cleanly.
+
 ## [0.1.0-SNAPSHOT] - 2026-11-25
 
 ### Added

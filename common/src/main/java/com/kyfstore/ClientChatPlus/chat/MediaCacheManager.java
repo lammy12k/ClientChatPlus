@@ -1,5 +1,6 @@
 package com.kyfstore.ClientChatPlus.chat;
 
+import com.kyfstore.ClientChatPlus.config.ChatConfig;
 import com.mojang.blaze3d.platform.NativeImage;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.texture.DynamicTexture;
@@ -263,12 +264,14 @@ public class MediaCacheManager {
         String name = slash >= 0 ? path.substring(slash + 1) : path;
         return name.isBlank() ? "attachment" : name;
     }
+
     private static String extractCleanPath(String url) {
         int queryIdx = url.indexOf('?');
         String clean = queryIdx >= 0 ? url.substring(0, queryIdx) : url;
         int hashIdx = clean.indexOf('#');
         return hashIdx >= 0 ? clean.substring(0, hashIdx) : clean;
     }
+
     public CachedImage getOrFetchImage(String imageUrl) {
         String targetUrl = resolvedMediaUrls.getOrDefault(imageUrl, imageUrl);
         return imageCache.computeIfAbsent(imageUrl, key -> {
@@ -277,6 +280,7 @@ public class MediaCacheManager {
             return entry;
         });
     }
+
     public CachedImage getOrFetchWebsitePreview(String siteUrl) {
         String cacheKey = "preview:" + siteUrl;
         return imageCache.computeIfAbsent(cacheKey, key -> {
@@ -314,6 +318,7 @@ public class MediaCacheManager {
             return entry;
         });
     }
+
     public CachedAttachment getOrFetchAttachment(String fileUrl) {
         return attachmentCache.computeIfAbsent(fileUrl, url -> {
             CachedAttachment entry = new CachedAttachment(extractFileName(url), url);
@@ -321,18 +326,24 @@ public class MediaCacheManager {
             return entry;
         });
     }
+
     private void fetchAttachment(String url, CachedAttachment entry) {
         if (entry.isVideo) {
-            if (VlcVideoBridge.isAvailable()) {
-                entry.videoPlayer = VlcVideoBridge.createPlayer(url);
-                Minecraft.getInstance().execute(() -> ChatHistoryManager.getInstance().invalidateLayouts());
-            } else if (WaterMediaBridge.isAvailable()) {
-                Minecraft.getInstance().execute(() -> {
-                    if (entry.videoPlayer == null) {
-                        entry.videoPlayer = WaterMediaBridge.createPlayer(url);
-                        ChatHistoryManager.getInstance().invalidateLayouts();
-                    }
-                });
+            ChatConfig.VideoBackend backend = ChatConfig.get().videoBackend;
+            if (backend != ChatConfig.VideoBackend.DISABLED) {
+                boolean allowVlc = backend == ChatConfig.VideoBackend.AUTO || backend == ChatConfig.VideoBackend.VLC_ONLY;
+                boolean allowWater = backend == ChatConfig.VideoBackend.AUTO || backend == ChatConfig.VideoBackend.WATERMEDIA_ONLY;
+                if (allowVlc && VlcVideoBridge.isAvailable()) {
+                    entry.videoPlayer = VlcVideoBridge.createPlayer(url);
+                    Minecraft.getInstance().execute(() -> ChatHistoryManager.getInstance().invalidateLayouts());
+                } else if (allowWater && WaterMediaBridge.isAvailable()) {
+                    Minecraft.getInstance().execute(() -> {
+                        if (entry.videoPlayer == null) {
+                            entry.videoPlayer = WaterMediaBridge.createPlayer(url);
+                            ChatHistoryManager.getInstance().invalidateLayouts();
+                        }
+                    });
+                }
             }
         }
         try {
@@ -378,6 +389,7 @@ public class MediaCacheManager {
             entry.sizeLabel = entry.isVideo ? "Video Attachment" : "Attachment";
         }
     }
+
     private void downloadAndRegisterImage(String url, CachedImage entry) {
         try {
             HttpRequest req = HttpRequest.newBuilder(URI.create(url))
@@ -441,6 +453,7 @@ public class MediaCacheManager {
             entry.failed = true;
         }
     }
+
     private static List<DecodedGifFrame> decodeAnimatedGif(byte[] bytes) {
         try (InputStream in = new ByteArrayInputStream(bytes);
              ImageInputStream iis = ImageIO.createImageInputStream(in)) {
@@ -501,6 +514,7 @@ public class MediaCacheManager {
             return null;
         }
     }
+
     private static NativeImage decodeToNativeImage(byte[] bytes) {
         try (InputStream in = new ByteArrayInputStream(bytes)) {
             return NativeImage.read(in);
@@ -518,6 +532,7 @@ public class MediaCacheManager {
             return null;
         }
     }
+
     private static String formatBytes(long bytes) {
         if (bytes < 1024) return bytes + " B";
         double kb = bytes / 1024.0;
@@ -525,6 +540,7 @@ public class MediaCacheManager {
         double mb = kb / 1024.0;
         return String.format(Locale.US, "%.1f MB", mb);
     }
+
     public void clearCache() {
         Minecraft.getInstance().execute(() -> {
             for (CachedImage img : imageCache.values()) {
@@ -546,8 +562,13 @@ public class MediaCacheManager {
             resolvedMediaUrls.clear();
         });
     }
-    private record DecodedGifFrame(NativeImage image, int delayMs) {}
-    public record GifFrame(Identifier textureId, DynamicTexture texture, int delayMs) {}
+
+    private record DecodedGifFrame(NativeImage image, int delayMs) {
+    }
+
+    public record GifFrame(Identifier textureId, DynamicTexture texture, int delayMs) {
+    }
+
     public static class CachedImage {
         public volatile boolean ready = false;
         public volatile boolean failed = false;
@@ -560,6 +581,7 @@ public class MediaCacheManager {
         public final List<GifFrame> frames = new ArrayList<>();
         private int currentFrameIdx = 0;
         private long lastFrameSwitchMs = System.currentTimeMillis();
+
         public Identifier getCurrentTextureId() {
             if (frames.size() <= 1) {
                 return textureId;
@@ -573,6 +595,7 @@ public class MediaCacheManager {
             return frames.get(currentFrameIdx).textureId;
         }
     }
+
     public static class CachedAttachment {
         public final String fileName;
         public final String url;
@@ -581,6 +604,7 @@ public class MediaCacheManager {
         public volatile String sizeLabel = "Loading...";
         public volatile ChatCodeBlock textPreviewBlock = null;
         public volatile VideoPlayerHandle videoPlayer = null;
+
         public CachedAttachment(String fileName, String url) {
             this.fileName = fileName;
             this.url = url;

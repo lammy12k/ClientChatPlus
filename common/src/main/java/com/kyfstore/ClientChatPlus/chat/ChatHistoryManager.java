@@ -6,7 +6,9 @@ import com.google.gson.reflect.TypeToken;
 import com.kyfstore.ClientChatPlus.config.ChatConfig;
 import com.kyfstore.ClientChatPlus.platform.Services;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.PlayerInfo;
 import net.minecraft.network.chat.Component;
+import net.minecraft.sounds.SoundEvents;
 import org.lwjgl.util.tinyfd.TinyFileDialogs;
 
 import java.io.IOException;
@@ -17,8 +19,10 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 
@@ -33,8 +37,21 @@ public class ChatHistoryManager {
     private long lastFrameNanos = System.nanoTime();
     private int scrollPixels = 0;
     private int maxScrollPixels = 0;
-    private boolean showingBookmarksOnly = false;
-    private boolean searchActive = false;
+
+    public enum FilterTab {
+        ALL,
+        BOOKMARKS,
+        MENTIONS
+    }
+
+    public enum SearchMode {
+        NONE,
+        TEXT,
+        USER
+    }
+
+    private FilterTab activeTab = FilterTab.ALL;
+    private SearchMode searchMode = SearchMode.NONE;
     private String searchQuery = "";
     private int unreadNewMessages = 0;
 
@@ -105,6 +122,10 @@ public class ChatHistoryManager {
         int chatWidth = CustomChatRenderer.getChatWidth(mc);
         msg.recalculateLayout(mc.font, chatWidth);
 
+        if (msg.isMention && ChatConfig.get().mentionSound && mc.player != null) {
+            mc.player.playSound(SoundEvents.NOTE_BLOCK_BELL.value(), 0.7f, 1.25f);
+        }
+
         messages.addFirst(msg);
 
         if (scrollPixels > 0) {
@@ -121,48 +142,68 @@ public class ChatHistoryManager {
     }
 
     public List<RichChatMessage> getVisibleMessages() {
-        boolean hasSearch = searchActive && !searchQuery.isBlank();
-        if (!showingBookmarksOnly && !hasSearch) return messages;
+        boolean hasSearch = searchMode != SearchMode.NONE && !searchQuery.isBlank();
+        if (activeTab == FilterTab.ALL && !hasSearch) return messages;
 
-        String needle = searchQuery.toLowerCase(Locale.ROOT);
+        String needle = searchQuery.toLowerCase(Locale.ROOT).trim();
         List<RichChatMessage> filtered = new ArrayList<>();
         for (RichChatMessage msg : messages) {
-            if (showingBookmarksOnly && !msg.bookmarked) continue;
-            if (hasSearch && !msg.rawText.toLowerCase(Locale.ROOT).contains(needle)) continue;
+            if (activeTab == FilterTab.BOOKMARKS && !msg.bookmarked) continue;
+            if (activeTab == FilterTab.MENTIONS && !msg.isMention) continue;
+            if (hasSearch) {
+                if (searchMode == SearchMode.TEXT) {
+                    if (!msg.rawText.toLowerCase(Locale.ROOT).contains(needle)) continue;
+                } else if (searchMode == SearchMode.USER) {
+                    if (msg.senderName.isEmpty() || !msg.senderName.toLowerCase(Locale.ROOT).contains(needle)) continue;
+                }
+            }
             filtered.add(msg);
         }
         return filtered;
     }
 
-    public boolean isShowingBookmarksOnly() {
-        return showingBookmarksOnly;
+    public FilterTab getActiveTab() {
+        return activeTab;
     }
 
-    public void toggleShowBookmarksOnly() {
-        showingBookmarksOnly = !showingBookmarksOnly;
-        scrollPixels = 0;
-        unreadNewMessages = 0;
+    public void setActiveTab(FilterTab tab) {
+        this.activeTab = tab;
+        this.scrollPixels = 0;
+        this.unreadNewMessages = 0;
+    }
+
+    public SearchMode getSearchMode() {
+        return searchMode;
     }
 
     public boolean isSearchActive() {
-        return searchActive;
+        return searchMode != SearchMode.NONE;
     }
 
-    public void setSearchActive(boolean active) {
-        this.searchActive = active;
-        if (!active) {
+    public void setSearchMode(SearchMode mode) {
+        this.searchMode = mode;
+        if (mode == SearchMode.NONE) {
             this.searchQuery = "";
         }
         this.scrollPixels = 0;
         this.unreadNewMessages = 0;
     }
 
+    public void setSearchActive(boolean active) {
+        setSearchMode(active ? SearchMode.TEXT : SearchMode.NONE);
+    }
+
     public void toggleSearch() {
-        setSearchActive(!this.searchActive);
+        setSearchMode(this.searchMode == SearchMode.NONE ? SearchMode.TEXT : SearchMode.NONE);
     }
 
     public String getSearchQuery() {
         return searchQuery;
+    }
+
+    public void setSearchQuery(String query) {
+        this.searchQuery = query;
+        this.scrollPixels = 0;
     }
 
     public void appendSearchChar(char c) {
@@ -177,6 +218,33 @@ public class ChatHistoryManager {
             searchQuery = searchQuery.substring(0, searchQuery.length() - 1);
             scrollPixels = 0;
         }
+    }
+
+    public List<String> getUserAutocompleteSuggestions() {
+        if (searchMode != SearchMode.USER) return List.of();
+        Set<String> candidates = new LinkedHashSet<>();
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.getConnection() != null) {
+            for (PlayerInfo info : mc.getConnection().getOnlinePlayers()) {
+                if (info.getProfile() != null && info.getProfile().name() != null) {
+                    candidates.add(info.getProfile().name());
+                }
+            }
+        }
+        for (RichChatMessage msg : messages) {
+            if (!msg.senderName.isEmpty()) {
+                candidates.add(msg.senderName);
+            }
+        }
+        String prefix = searchQuery.toLowerCase(Locale.ROOT).trim();
+        List<String> matches = new ArrayList<>();
+        for (String name : candidates) {
+            if (prefix.isEmpty() || name.toLowerCase(Locale.ROOT).startsWith(prefix) || name.toLowerCase(Locale.ROOT).contains(prefix)) {
+                matches.add(name);
+                if (matches.size() >= 6) break;
+            }
+        }
+        return matches;
     }
 
     public int getUnreadNewMessages() {
@@ -226,7 +294,8 @@ public class ChatHistoryManager {
         Path file = getBaseDir().resolve("bookmarks.json");
         if (Files.exists(file)) {
             try {
-                List<BookmarkEntry> loaded = GSON.fromJson(Files.readString(file), new TypeToken<List<BookmarkEntry>>() {}.getType());
+                List<BookmarkEntry> loaded = GSON.fromJson(Files.readString(file), new TypeToken<List<BookmarkEntry>>() {
+                }.getType());
                 if (loaded != null) {
                     bookmarks.clear();
                     bookmarks.addAll(loaded);
@@ -286,7 +355,8 @@ public class ChatHistoryManager {
 
                 if (selected != null && !selected.isBlank()) {
                     Path chosen = Path.of(selected);
-                    List<BookmarkEntry> imported = GSON.fromJson(Files.readString(chosen), new TypeToken<List<BookmarkEntry>>() {}.getType());
+                    List<BookmarkEntry> imported = GSON.fromJson(Files.readString(chosen), new TypeToken<List<BookmarkEntry>>() {
+                    }.getType());
                     int added = 0;
                     if (imported != null) {
                         for (BookmarkEntry entry : imported) {
@@ -332,7 +402,7 @@ public class ChatHistoryManager {
     public void resetScroll() {
         scrollPixels = 0;
         unreadNewMessages = 0;
-        searchActive = false;
+        searchMode = SearchMode.NONE;
         searchQuery = "";
     }
 
@@ -354,11 +424,14 @@ public class ChatHistoryManager {
         }
         return currentPushOffset;
     }
+
     public void clear() {
         messages.clear();
         currentPushOffset = 0.0f;
         scrollPixels = 0;
         unreadNewMessages = 0;
     }
-    public record BookmarkEntry(String id, String rawText, long savedAt) {}
+
+    public record BookmarkEntry(String id, String rawText, long savedAt) {
+    }
 }

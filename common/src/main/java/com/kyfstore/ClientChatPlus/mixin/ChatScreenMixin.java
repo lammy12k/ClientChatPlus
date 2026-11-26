@@ -48,6 +48,14 @@ public abstract class ChatScreenMixin extends Screen {
         ChatHistoryManager manager = ChatHistoryManager.getInstance();
         int key = event.key();
 
+        if (CustomChatRenderer.isLightboxOpen()) {
+            if (key == InputConstants.KEY_ESCAPE) {
+                CustomChatRenderer.closeLightbox();
+                cir.setReturnValue(true);
+            }
+            return;
+        }
+
         if (key == InputConstants.KEY_F && event.hasControlDown()) {
             manager.toggleSearch();
             cir.setReturnValue(true);
@@ -57,6 +65,12 @@ public abstract class ChatScreenMixin extends Screen {
         if (manager.isSearchActive()) {
             if (key == InputConstants.KEY_ESCAPE) {
                 manager.setSearchActive(false);
+                cir.setReturnValue(true);
+            } else if (key == InputConstants.KEY_TAB && manager.getSearchMode() == ChatHistoryManager.SearchMode.USER) {
+                java.util.List<String> suggestions = manager.getUserAutocompleteSuggestions();
+                if (!suggestions.isEmpty()) {
+                    manager.setSearchQuery(suggestions.getFirst());
+                }
                 cir.setReturnValue(true);
             } else if (key == InputConstants.KEY_BACKSPACE) {
                 manager.backspaceSearch();
@@ -107,6 +121,7 @@ public abstract class ChatScreenMixin extends Screen {
 
     @Inject(method = "removed", at = @At("HEAD"))
     private void onRemoved(CallbackInfo ci) {
+        CustomChatRenderer.closeLightbox();
         ChatHistoryManager.getInstance().resetScroll();
     }
 }

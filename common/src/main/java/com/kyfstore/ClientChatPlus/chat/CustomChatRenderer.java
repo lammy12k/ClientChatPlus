@@ -28,6 +28,17 @@ public class CustomChatRenderer {
     private static long lastCopiedAtNanos = 0L;
     private static UUID lastCopiedMessageId = null;
     private static long lastCopiedMessageAtNanos = 0L;
+    private static String lightboxImageUrl = null;
+    private static MediaCacheManager.CachedAttachment lightboxVideoAttachment = null;
+
+    public static boolean isLightboxOpen() {
+        return lightboxImageUrl != null || lightboxVideoAttachment != null;
+    }
+
+    public static void closeLightbox() {
+        lightboxImageUrl = null;
+        lightboxVideoAttachment = null;
+    }
 
     public static int getChatWidth(Minecraft mc) {
         return Mth.floor(mc.options.chatWidth().get() * 280.0 + 40.0);
@@ -64,7 +75,9 @@ public class CustomChatRenderer {
         if (focused) {
             hoveredStyle = null;
             activeClickZones.clear();
-            renderTopToolbar(graphics, font, leftX, Math.max(2, topY - 14), mouseX, mouseY, manager);
+            if (!isLightboxOpen()) {
+                renderTopToolbar(graphics, font, leftX, Math.max(2, topY - 14), mouseX, mouseY, manager);
+            }
         }
 
         if (messages.isEmpty()) return;
@@ -119,15 +132,22 @@ public class CustomChatRenderer {
             graphics.pose().scale(scale, scale);
 
             int bgOpacity = (int) (mc.options.textBackgroundOpacity().get() * 255.0 * combinedAlpha);
+            if (msg.isMention) {
+                bgOpacity = Math.max(bgOpacity, (int) (115 * combinedAlpha));
+            }
             if (isMsgHovered) {
                 bgOpacity = Math.min(255, bgOpacity + 45);
             }
             if (bgOpacity > 3) {
-                int bgColor = (bgOpacity << 24) | (msg.bookmarked ? 0x2B2200 : 0x000000);
+                int baseRgb = msg.isMention ? 0x3A2600 : (msg.bookmarked ? 0x2B2200 : 0x000000);
+                int bgColor = (bgOpacity << 24) | baseRgb;
                 graphics.fill(-2, -1, chatWidth + 4, msg.totalHeight - 1, bgColor);
             }
 
             int textAlpha = Math.max(4, Mth.clamp((int) (combinedAlpha * 255.0f), 0, 255));
+            if (msg.isMention) {
+                graphics.fill(-2, -1, 0, msg.totalHeight - 1, (textAlpha << 24) | 0xFFAA00);
+            }
             int textColor = (textAlpha << 24) | 0xFFFFFF;
 
             int lineY = 1;
@@ -135,9 +155,15 @@ public class CustomChatRenderer {
                 if (fLine.visualRows.isEmpty() && !msg.codeBlocks.isEmpty()) {
                     continue;
                 }
-                int indent = fLine.isBullet ? 10 : 0;
+                int indent = (fLine.isBullet || fLine.isQuote) ? 10 : 0;
                 if (fLine.isBullet) {
                     graphics.text(font, "•", 2, lineY, textColor, true);
+                } else if (fLine.isQuote) {
+                    int quoteH = 0;
+                    for (ChatFormattedLine.VisualRow r : fLine.visualRows) quoteH += r.height;
+                    if (quoteH > 0) {
+                        graphics.fill(3, lineY, 5, lineY + quoteH - 1, (textAlpha << 24) | 0x72767D);
+                    }
                 }
 
                 for (ChatFormattedLine.VisualRow row : fLine.visualRows) {
@@ -201,6 +227,20 @@ public class CustomChatRenderer {
                     int drawW = Math.max(1, Mth.floor(img.width * ratio));
                     int drawH = Math.max(1, Mth.floor(img.height * ratio));
                     graphics.blit(RenderPipelines.GUI_TEXTURED, currentTex, 0, lineY, 0.0f, 0.0f, drawW, drawH, drawW, drawH);
+                    if (focused && !isLightboxOpen()) {
+                        int ix1 = leftX;
+                        int iy1 = Mth.floor(drawY + lineY * scale);
+                        int ix2 = leftX + Mth.ceil(drawW * scale);
+                        int iy2 = Mth.floor(drawY + (lineY + drawH) * scale);
+                        if (mouseX >= ix1 && mouseX <= ix2 && mouseY >= iy1 && mouseY <= iy2) {
+                            graphics.requestCursor(CursorTypes.POINTING_HAND);
+                        }
+                        final String targetImgUrl = imgUrl;
+                        activeClickZones.add(new ClickZone(ix1, iy1, ix2, iy2, () -> {
+                            lightboxVideoAttachment = null;
+                            lightboxImageUrl = targetImgUrl;
+                        }));
+                    }
                     lineY += drawH + 4;
                 } else if (!img.failed) {
                     graphics.text(font, "§7[Loading image...]", 0, lineY, textColor, true);
@@ -277,7 +317,20 @@ public class CustomChatRenderer {
                         graphics.fill(volBarX1, controlsY + 6, volBarX1 + volFillW, controlsY + 9, (textAlpha << 24) | 0x57F287);
                     }
 
-                    if (focused) {
+                    if (focused && !isLightboxOpen()) {
+                        int vidTopScr = Mth.floor(drawY + vidTop * scale);
+                        int vidBotScr = Mth.floor(drawY + (vidTop + drawH) * scale);
+                        int vidX1 = leftX + Mth.floor(2 * scale);
+                        int vidX2 = leftX + Mth.ceil((2 + drawW) * scale);
+                        if (mouseX >= vidX1 && mouseX <= vidX2 && mouseY >= vidTopScr && mouseY <= vidBotScr) {
+                            graphics.requestCursor(CursorTypes.POINTING_HAND);
+                        }
+                        final MediaCacheManager.CachedAttachment targetAtt = att;
+                        activeClickZones.add(new ClickZone(vidX1, vidTopScr, vidX2, vidBotScr, () -> {
+                            lightboxImageUrl = null;
+                            lightboxVideoAttachment = targetAtt;
+                        }));
+
                         int ctrlTopScr = Mth.floor(drawY + controlsY * scale);
                         int ctrlBotScr = Mth.floor(drawY + (controlsY + 15) * scale);
 
@@ -374,6 +427,10 @@ public class CustomChatRenderer {
             }
         }
         graphics.disableScissor();
+        if (focused && isLightboxOpen()) {
+            renderLightboxModal(graphics, font, mc, mouseX, mouseY, mc.getWindow().getGuiScaledWidth(), screenHeight);
+            return;
+        }
         if (focused && manager.getUnreadNewMessages() > 0 && manager.getScrollPixels() > 0) {
             renderNewMessagesPill(graphics, font, leftX, bottomY - 14, Mth.ceil(chatWidth * scale), mouseX, mouseY, manager);
         }
@@ -401,6 +458,7 @@ public class CustomChatRenderer {
             }
         }
     }
+
     private static void renderNewMessagesPill(GuiGraphicsExtractor graphics, Font font, int leftX, int y, int scaledChatWidth, int mouseX, int mouseY, ChatHistoryManager manager) {
         int count = manager.getUnreadNewMessages();
         String label = "↓ " + count + (count == 1 ? " New Message" : " New Messages");
@@ -418,6 +476,7 @@ public class CustomChatRenderer {
         }
         activeClickZones.add(new ClickZone(x, y, x + w, y + h, manager::jumpToBottom));
     }
+
     private static void drawFilePaperclipIcon(GuiGraphicsExtractor graphics, int x, int y, int alpha) {
         int docCol = (alpha << 24) | 0xB9BBBE;
         int foldCol = (alpha << 24) | 0x72767D;
@@ -431,6 +490,7 @@ public class CustomChatRenderer {
         graphics.fill(x + 8, y + 4, x + 11, y + 12, clipCol);
         graphics.fill(x + 9, y + 5, x + 10, y + 11, (alpha << 24) | 0x1E2229);
     }
+
     private static void renderCopyButton(GuiGraphicsExtractor graphics, Font font, Minecraft mc, ChatCodeBlock block, int rightX, int topY, int leftX, float drawY, float scale, int textAlpha, int mouseX, int mouseY, boolean focused) {
         boolean recentlyCopied = (block == lastCopiedBlock) && (System.nanoTime() - lastCopiedAtNanos < 1_500_000_000L);
         String copyLabel = recentlyCopied ? "Copied!" : "Copy";
@@ -457,6 +517,7 @@ public class CustomChatRenderer {
             }));
         }
     }
+
     private static void renderHoverPreviewPopup(GuiGraphicsExtractor graphics, Font font, String url, MediaCacheManager.CachedImage img, int mouseX, int mouseY, int screenW, int screenH) {
         int boxW = 180;
         int drawW = 0;
@@ -516,40 +577,208 @@ public class CustomChatRenderer {
             graphics.text(font, img.failed ? "No preview metadata" : "Loading preview...", px + 4, curY, 0xFFAAAAAA, false);
         }
     }
+
     private static void renderTopToolbar(GuiGraphicsExtractor graphics, Font font, int x, int y, int mouseX, int mouseY, ChatHistoryManager manager) {
-        String filterLabel = manager.isShowingBookmarksOnly() ? "★ Bookmarks" : "All";
         int curX = x;
-        curX += drawPillButton(graphics, font, curX, y, filterLabel, mouseX, mouseY, manager.isShowingBookmarksOnly() ? 0xAA664400 : 0xAA111111, manager::toggleShowBookmarksOnly) + 4;
+        ChatHistoryManager.FilterTab tab = manager.getActiveTab();
+        curX += drawPillButton(graphics, font, curX, y, "All", mouseX, mouseY, tab == ChatHistoryManager.FilterTab.ALL ? 0xCC2B4C7E : 0xAA111111, () -> manager.setActiveTab(ChatHistoryManager.FilterTab.ALL)) + 3;
+        curX += drawPillButton(graphics, font, curX, y, "★ Bookmarks", mouseX, mouseY, tab == ChatHistoryManager.FilterTab.BOOKMARKS ? 0xAA664400 : 0xAA111111, () -> manager.setActiveTab(ChatHistoryManager.FilterTab.BOOKMARKS)) + 3;
+        curX += drawPillButton(graphics, font, curX, y, "@ Mentions", mouseX, mouseY, tab == ChatHistoryManager.FilterTab.MENTIONS ? 0xAA7A4900 : 0xAA111111, () -> manager.setActiveTab(ChatHistoryManager.FilterTab.MENTIONS)) + 4;
+
         curX += drawPillButton(graphics, font, curX, y, "Export", mouseX, mouseY, 0xAA111111, () -> {
             Path exported = manager.exportBookmarks();
             manager.addMessage(Component.literal("§aExported bookmarks to: " + exported.getFileName()));
-        }) + 4;
+        }) + 3;
         curX += drawPillButton(graphics, font, curX, y, "Import", mouseX, mouseY, 0xAA111111, () -> {
             manager.importBookmarksWithFileDialog(count -> {
                 manager.addMessage(Component.literal("§aImported " + count + " bookmark(s)."));
             });
         }) + 4;
+
         if (manager.isSearchActive()) {
+            boolean isUserMode = manager.getSearchMode() == ChatHistoryManager.SearchMode.USER;
             boolean blink = (System.currentTimeMillis() / 500L) % 2L == 0L;
-            String queryText = manager.getSearchQuery() + (blink ? "" : " ");
-            String display = "🔍 " + (manager.getSearchQuery().isEmpty() ? "Type to filter..." + (blink ? "" : "") : queryText);
-            int searchW = Math.max(95, font.width(display) + 18);
+            String prefixIcon = isUserMode ? "👤 " : "🔍 ";
+            String placeholder = isUserMode ? "Username (Tab)..." : "Search text...";
+            String queryText = manager.getSearchQuery() + (blink ? "_" : " ");
+            String display = prefixIcon + (manager.getSearchQuery().isEmpty() ? placeholder : queryText);
+            int searchW = Math.max(105, font.width(display) + 18);
             int h = 11;
-            graphics.fill(curX, y, curX + searchW, y + h, 0xDD1A2639);
-            graphics.fill(curX, y + h - 1, curX + searchW, y + h, 0xFF58A6FF);
+            graphics.fill(curX, y, curX + searchW, y + h, isUserMode ? 0xDD261A39 : 0xDD1A2639);
+            graphics.fill(curX, y + h - 1, curX + searchW, y + h, isUserMode ? 0xFFA371F7 : 0xFF58A6FF);
             graphics.text(font, display, curX + 4, y + 2, manager.getSearchQuery().isEmpty() ? 0xFF8899AA : 0xFFFFFFFF, false);
-            activeClickZones.add(new ClickZone(curX, y, curX + searchW - 12, y + h, () -> {}));
+            activeClickZones.add(new ClickZone(curX, y, curX + searchW - 12, y + h, () -> {
+            }));
+
             int closeX = curX + searchW - 11;
             boolean closeHover = mouseX >= closeX && mouseX <= curX + searchW && mouseY >= y && mouseY <= y + h;
             graphics.text(font, "✕", closeX + 2, y + 2, closeHover ? 0xFFFF5555 : 0xFFAAAAAA, false);
             if (closeHover) {
                 graphics.requestCursor(CursorTypes.POINTING_HAND);
             }
-            activeClickZones.add(new ClickZone(closeX, y, curX + searchW, y + h, () -> manager.setSearchActive(false)));
+            activeClickZones.add(new ClickZone(closeX, y, curX + searchW, y + h, () -> manager.setSearchMode(ChatHistoryManager.SearchMode.NONE)));
+
+            if (isUserMode) {
+                List<String> suggestions = manager.getUserAutocompleteSuggestions();
+                if (!suggestions.isEmpty()) {
+                    int dropY = y + h + 1;
+                    int dropH = suggestions.size() * 11 + 2;
+                    graphics.fill(curX, dropY, curX + searchW, dropY + dropH, 0xF014161D);
+                    graphics.fill(curX, dropY, curX + 1, dropY + dropH, 0xFFA371F7);
+                    int itemY = dropY + 1;
+                    for (String user : suggestions) {
+                        boolean uHover = mouseX >= curX && mouseX <= curX + searchW && mouseY >= itemY && mouseY < itemY + 11;
+                        if (uHover) {
+                            graphics.fill(curX + 1, itemY, curX + searchW, itemY + 11, 0xDD2D333B);
+                            graphics.requestCursor(CursorTypes.POINTING_HAND);
+                        }
+                        graphics.text(font, user, curX + 5, itemY + 2, uHover ? 0xFFFFFF55 : 0xFFE6EDF3, false);
+                        final String chosenUser = user;
+                        activeClickZones.add(new ClickZone(curX, itemY, curX + searchW, itemY + 11, () -> manager.setSearchQuery(chosenUser)));
+                        itemY += 11;
+                    }
+                }
+            }
         } else {
-            drawPillButton(graphics, font, curX, y, "🔍 Search", mouseX, mouseY, 0xAA111111, () -> manager.setSearchActive(true));
+            curX += drawPillButton(graphics, font, curX, y, "🔍 Text", mouseX, mouseY, 0xAA111111, () -> manager.setSearchMode(ChatHistoryManager.SearchMode.TEXT)) + 3;
+            drawPillButton(graphics, font, curX, y, "👤 User", mouseX, mouseY, 0xAA111111, () -> manager.setSearchMode(ChatHistoryManager.SearchMode.USER));
         }
     }
+
+    private static void renderLightboxModal(GuiGraphicsExtractor graphics, Font font, Minecraft mc, int mouseX, int mouseY, int screenW, int screenH) {
+        graphics.fill(0, 0, screenW, screenH, 0xCC0A0B0E);
+
+        int maxModalW = Mth.floor(screenW * 0.82f);
+        int maxModalH = Mth.floor(screenH * 0.78f);
+
+        if (lightboxImageUrl != null) {
+            MediaCacheManager.CachedImage img = MediaCacheManager.get().getOrFetchImage(lightboxImageUrl);
+            Identifier tex = img.getCurrentTextureId();
+            int iw = img.width > 0 ? img.width : 320;
+            int ih = img.height > 0 ? img.height : 180;
+            float ratio = Math.min(2.5f, Math.min((float) (maxModalW - 12) / iw, (float) (maxModalH - 28) / ih));
+            int drawW = Math.max(120, Mth.floor(iw * ratio));
+            int drawH = Math.max(80, Mth.floor(ih * ratio));
+            int boxW = drawW + 8;
+            int boxH = drawH + 22;
+            int bx = (screenW - boxW) / 2;
+            int by = (screenH - boxH) / 2;
+
+            graphics.fill(bx - 1, by - 1, bx + boxW + 1, by + boxH + 1, 0xFF3A3F4B);
+            graphics.fill(bx, by, bx + boxW, by + boxH, 0xF514161D);
+
+            String label = MediaCacheManager.extractFileName(lightboxImageUrl);
+            if (label.length() > 36) label = label.substring(0, 33) + "...";
+            graphics.text(font, label, bx + 6, by + 5, 0xFF58A6FF, false);
+
+            int closeX = bx + boxW - 14;
+            boolean closeHover = mouseX >= closeX && mouseX <= bx + boxW - 2 && mouseY >= by + 2 && mouseY <= by + 15;
+            graphics.text(font, "✕", closeX + 2, by + 5, closeHover ? 0xFFFF5555 : 0xFFCCCCCC, false);
+            if (closeHover) graphics.requestCursor(CursorTypes.POINTING_HAND);
+
+            if (img.ready && tex != null) {
+                graphics.blit(RenderPipelines.GUI_TEXTURED, tex, bx + 4, by + 18, 0.0f, 0.0f, drawW, drawH, drawW, drawH);
+            }
+
+            final String openUrl = lightboxImageUrl;
+            activeClickZones.add(new ClickZone(0, 0, screenW, screenH, CustomChatRenderer::closeLightbox));
+            activeClickZones.add(new ClickZone(bx, by, bx + boxW, by + boxH, () -> {
+            }));
+            activeClickZones.add(new ClickZone(closeX, by + 2, bx + boxW - 2, by + 15, CustomChatRenderer::closeLightbox));
+            activeClickZones.add(new ClickZone(bx + 4, by + 3, bx + 4 + font.width(label), by + 15, () -> {
+                try {
+                    ScreenClickInvoker.invoke(mc.gui.screen(), new ClickEvent.OpenUrl(URI.create(openUrl)));
+                } catch (Exception ignored) {
+                }
+            }));
+            return;
+        }
+
+        if (lightboxVideoAttachment != null && lightboxVideoAttachment.videoPlayer != null) {
+            VideoPlayerHandle vp = lightboxVideoAttachment.videoPlayer;
+            Identifier tex = vp.updateAndGetTextureId();
+            int vw = vp.getWidth() > 0 ? vp.getWidth() : 640;
+            int vh = vp.getHeight() > 0 ? vp.getHeight() : 360;
+            float ratio = Math.min(2.0f, Math.min((float) (maxModalW - 12) / vw, (float) (maxModalH - 36) / vh));
+            int drawW = Math.max(240, Mth.floor(vw * ratio));
+            int drawH = Math.max(135, Mth.floor(vh * ratio));
+            int boxW = drawW + 8;
+            int controlsY = 0;
+            int boxH = 18 + drawH + 18;
+            int bx = (screenW - boxW) / 2;
+            int by = (screenH - boxH) / 2;
+            controlsY = by + 18 + drawH;
+
+            graphics.fill(bx - 1, by - 1, bx + boxW + 1, by + boxH + 1, 0xFF3A3F4B);
+            graphics.fill(bx, by, bx + boxW, by + boxH, 0xF514161D);
+
+            String title = lightboxVideoAttachment.fileName;
+            if (title.length() > 40) title = title.substring(0, 37) + "...";
+            graphics.text(font, title, bx + 6, by + 5, 0xFF58A6FF, false);
+
+            int closeX = bx + boxW - 14;
+            boolean closeHover = mouseX >= closeX && mouseX <= bx + boxW - 2 && mouseY >= by + 2 && mouseY <= by + 15;
+            graphics.text(font, "✕", closeX + 2, by + 5, closeHover ? 0xFFFF5555 : 0xFFCCCCCC, false);
+            if (closeHover) graphics.requestCursor(CursorTypes.POINTING_HAND);
+
+            graphics.fill(bx + 4, by + 17, bx + 4 + drawW, by + 17 + drawH, 0xFF050507);
+            if (tex != null && vp.getWidth() > 0 && vp.getHeight() > 0) {
+                graphics.blit(RenderPipelines.GUI_TEXTURED, tex, bx + 4, by + 17, 0.0f, 0.0f, drawW, drawH, drawW, drawH);
+            }
+
+            graphics.fill(bx + 4, controlsY, bx + boxW - 4, controlsY + 16, 0xFF1E2128);
+            graphics.text(font, vp.isPaused() ? "▶" : "⏸", bx + 8, controlsY + 4, 0xFFFFFFFF, false);
+
+            long curMs = vp.getTimeMs();
+            long durMs = vp.getDurationMs();
+            String timeLabel = formatDuration(curMs) + "/" + formatDuration(durMs);
+            int timeW = font.width(timeLabel);
+            int muteX = bx + boxW - 50;
+            int volBarX1 = bx + boxW - 36;
+            int volBarW = 28;
+            int timeX = muteX - timeW - 6;
+            int seekBarX1 = bx + 22;
+            int seekBarX2 = Math.max(seekBarX1 + 30, timeX - 6);
+            int seekBarW = seekBarX2 - seekBarX1;
+
+            graphics.fill(seekBarX1, controlsY + 6, seekBarX2, controlsY + 10, 0xFF3A3F4B);
+            float vidProg = (durMs > 0) ? Mth.clamp((float) curMs / (float) durMs, 0.0f, 1.0f) : 0.0f;
+            int fillW = Mth.floor(seekBarW * vidProg);
+            if (fillW > 0) {
+                graphics.fill(seekBarX1, controlsY + 6, seekBarX1 + fillW, controlsY + 10, 0xFF5865F2);
+            }
+            graphics.fill(seekBarX1 + fillW - 1, controlsY + 5, seekBarX1 + fillW + 2, controlsY + 11, 0xFFFFFFFF);
+            graphics.text(font, timeLabel, timeX, controlsY + 4, 0xFFB9BBBE, false);
+            graphics.text(font, vp.isMuted() ? "🔇" : "🔊", muteX, controlsY + 4, 0xFFDCDDDE, false);
+            graphics.fill(volBarX1, controlsY + 6, volBarX1 + volBarW, controlsY + 10, 0xFF3A3F4B);
+            int volFillW = Mth.floor(volBarW * (vp.getVolume() / 100.0f));
+            if (volFillW > 0) {
+                graphics.fill(volBarX1, controlsY + 6, volBarX1 + volFillW, controlsY + 10, 0xFF57F287);
+            }
+            activeClickZones.add(new ClickZone(0, 0, screenW, screenH, CustomChatRenderer::closeLightbox));
+            activeClickZones.add(new ClickZone(bx, by, bx + boxW, by + boxH, () -> {
+            }));
+            activeClickZones.add(new ClickZone(closeX, by + 2, bx + boxW - 2, by + 15, CustomChatRenderer::closeLightbox));
+            activeClickZones.add(new ClickZone(bx + 4, controlsY, bx + 20, controlsY + 16, vp::togglePause));
+            final long totalDur = durMs;
+            final int sLeft = seekBarX1;
+            final int sWidth = Math.max(1, seekBarW);
+            activeClickZones.add(new ClickZone(seekBarX1, controlsY, seekBarX2, controlsY + 16, () -> {
+                if (totalDur > 0) {
+                    double pct = Mth.clamp((mc.mouseHandler.xpos() * mc.getWindow().getGuiScaledWidth() / (double) mc.getWindow().getScreenWidth() - sLeft) / (double) sWidth, 0.0, 1.0);
+                    vp.seekMs((long) (totalDur * pct));
+                }
+            }));
+            activeClickZones.add(new ClickZone(muteX, controlsY, muteX + 12, controlsY + 16, vp::toggleMute));
+            final int vLeft = volBarX1;
+            final int vWidth = Math.max(1, volBarW);
+            activeClickZones.add(new ClickZone(volBarX1, controlsY, volBarX1 + volBarW, controlsY + 16, () -> {
+                double pct = Mth.clamp((mc.mouseHandler.xpos() * mc.getWindow().getGuiScaledWidth() / (double) mc.getWindow().getScreenWidth() - vLeft) / (double) vWidth, 0.0, 1.0);
+                vp.setVolume((int) Math.round(pct * 100.0));
+            }));
+        }
+    }
+
     private static int drawPillButton(GuiGraphicsExtractor graphics, Font font, int x, int y, String label, int mouseX, int mouseY, int baseColor, Runnable action) {
         int w = font.width(label) + 8;
         int h = 11;
@@ -562,6 +791,7 @@ public class CustomChatRenderer {
         activeClickZones.add(new ClickZone(x, y, x + w, y + h, action));
         return w;
     }
+
     private static void renderMessageButtons(GuiGraphicsExtractor graphics, Font font, Minecraft mc, int rightEdge, int topY, int mouseX, int mouseY, RichChatMessage msg, ChatHistoryManager manager) {
         int x = rightEdge;
         x -= drawMiniIcon(graphics, font, x, topY, "✕", 0xFFFF5555, "Delete Message", mouseX, mouseY, () -> manager.deleteMessage(msg.id)) + 2;
@@ -577,6 +807,7 @@ public class CustomChatRenderer {
         }) + 2;
         drawMiniIcon(graphics, font, x, topY, "★", msg.bookmarked ? 0xFFFFAA00 : 0xFFAAAAAA, msg.bookmarked ? "Unbookmark" : "Bookmark", mouseX, mouseY, () -> manager.toggleBookmark(msg));
     }
+
     private static int drawMiniIcon(GuiGraphicsExtractor graphics, Font font, int rightX, int y, String icon, int color, String tooltip, int mouseX, int mouseY, Runnable action) {
         int w = font.width(icon) + 4;
         int h = 10;
@@ -591,6 +822,7 @@ public class CustomChatRenderer {
         activeClickZones.add(new ClickZone(leftX, y, rightX, y + h, action));
         return w;
     }
+
     private static Style getStyleAtX(Font font, FormattedCharSequence seq, int targetX) {
         if (targetX < 0) return null;
         final float[] currentX = {0.0f};
@@ -606,6 +838,7 @@ public class CustomChatRenderer {
         });
         return found[0];
     }
+
     public static boolean handleMouseClick(Screen screen, double mouseX, double mouseY, int button) {
         if (button != 1) return false;
         for (int i = activeClickZones.size() - 1; i >= 0; i--) {
@@ -621,5 +854,7 @@ public class CustomChatRenderer {
         }
         return false;
     }
-    private record ClickZone(int x1, int y1, int x2, int y2, Runnable action) {}
+
+    private record ClickZone(int x1, int y1, int x2, int y2, Runnable action) {
+    }
 }

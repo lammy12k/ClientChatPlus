@@ -11,21 +11,32 @@ import java.util.List;
 public class ChatFormattedLine {
     public final List<ScaledSpan> spans;
     public final boolean isBullet;
+    public final boolean isQuote;
     public final List<VisualRow> visualRows = new ArrayList<>();
 
     public ChatFormattedLine(Component content, float scale, boolean isBullet) {
+        this(content, scale, isBullet, false);
+    }
+
+    public ChatFormattedLine(Component content, float scale, boolean isBullet, boolean isQuote) {
         this.spans = List.of(new ScaledSpan(content, scale));
         this.isBullet = isBullet;
+        this.isQuote = isQuote;
     }
 
     public ChatFormattedLine(List<ScaledSpan> spans, boolean isBullet) {
+        this(spans, isBullet, false);
+    }
+
+    public ChatFormattedLine(List<ScaledSpan> spans, boolean isBullet, boolean isQuote) {
         this.spans = spans;
         this.isBullet = isBullet;
+        this.isQuote = isQuote;
     }
 
     public int wrapAndMeasure(Font font, int maxChatWidth, int lineSpacing) {
         this.visualRows.clear();
-        int indent = isBullet ? 10 : 0;
+        int indent = (isBullet || isQuote) ? 10 : 0;
         int maxRowWidth = Math.max(20, maxChatWidth - indent);
 
         VisualRow currentRow = new VisualRow();
@@ -93,9 +104,11 @@ public class ChatFormattedLine {
         return totalHeight;
     }
 
-    public record ScaledSpan(Component content, float scale) {}
+    public record ScaledSpan(Component content, float scale) {
+    }
 
-    public record PositionedPiece(FormattedCharSequence seq, float offsetX, float scale) {}
+    public record PositionedPiece(FormattedCharSequence seq, float offsetX, float scale) {
+    }
 
     public static class VisualRow {
         public final List<PositionedPiece> pieces = new ArrayList<>();

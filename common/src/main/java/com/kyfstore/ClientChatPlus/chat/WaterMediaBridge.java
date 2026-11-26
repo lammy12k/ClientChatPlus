@@ -219,6 +219,7 @@ public class WaterMediaBridge {
             } catch (Throwable t) {
             }
         }
+
         @Override
         public void toggleMute() {
             if (player == null) return;
@@ -228,10 +229,12 @@ public class WaterMediaBridge {
             } catch (Throwable t) {
             }
         }
+
         @Override
         public int getVolume() {
             return muted ? 0 : volume;
         }
+
         @Override
         public void setVolume(int vol) {
             this.volume = Math.max(0, Math.min(100, vol));
@@ -243,6 +246,7 @@ public class WaterMediaBridge {
             } catch (Throwable ignored) {
             }
         }
+
         @Override
         public long getTimeMs() {
             if (player == null) return 0L;
@@ -253,6 +257,7 @@ public class WaterMediaBridge {
                 return 0L;
             }
         }
+
         @Override
         public long getDurationMs() {
             if (player == null) return 0L;
@@ -263,6 +268,7 @@ public class WaterMediaBridge {
                 return 0L;
             }
         }
+
         @Override
         public void seekMs(long targetMs) {
             if (player == null) return;
@@ -271,6 +277,7 @@ public class WaterMediaBridge {
             } catch (Throwable ignored) {
             }
         }
+
         @Override
         public void release() {
             if (player == null) return;
@@ -279,10 +286,12 @@ public class WaterMediaBridge {
             } catch (Throwable t) {
             }
         }
+
         private static class ExternalGlTexture extends GlTexture {
             protected ExternalGlTexture(int glId, int width, int height) {
                 super(GpuTexture.USAGE_TEXTURE_BINDING, "clientchatplus_watermedia", GpuFormat.RGBA8_UNORM, width, height, 1, 1, glId, null);
             }
+
             @Override
             public void close() {
             }

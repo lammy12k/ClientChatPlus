@@ -18,8 +18,11 @@ public class RichChatMessage {
     public final String rawText;
 
     public boolean bookmarked = false;
+    public boolean isMention = false;
+    public String senderName = "";
 
     public List<ChatFormattedLine> formattedLines;
+
     public final List<ChatCodeBlock> codeBlocks = new ArrayList<>();
     public final List<String> inlineImageUrls = new ArrayList<>();
     public final List<String> attachmentUrls = new ArrayList<>();
@@ -45,10 +48,13 @@ public class RichChatMessage {
 
     public float getIdleFadeAlpha(boolean chatFocused) {
         if (chatFocused) return 1.0f;
+        int fadeSec = ChatConfig.get().idleFadeSeconds;
+        if (fadeSec <= 0) return 1.0f;
         double elapsedSeconds = (System.nanoTime() - createdAtNanos) / 1_000_000_000.0;
-        if (elapsedSeconds < 9.0) return 1.0f;
-        if (elapsedSeconds >= 10.0) return 0.0f;
-        return (float) (10.0 - elapsedSeconds);
+        double fadeStart = Math.max(0.0, fadeSec - 1.0);
+        if (elapsedSeconds < fadeStart) return 1.0f;
+        if (elapsedSeconds >= fadeSec) return 0.0f;
+        return (float) (fadeSec - elapsedSeconds);
     }
 
     public void recalculateLayout(Font font, int maxWidth) {

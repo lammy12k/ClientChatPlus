@@ -25,12 +25,24 @@ public class ChatConfig {
     public boolean websiteHoverPreviews = true;
     public boolean renderDiscordAttachments = true;
     public boolean saveHistoryToFile = false;
+    public VideoBackend videoBackend = VideoBackend.AUTO;
+    public int idleFadeSeconds = 10;
+    public boolean highlightMentions = true;
+    public boolean mentionSound = true;
+
+    public enum VideoBackend {
+        AUTO,
+        VLC_ONLY,
+        WATERMEDIA_ONLY,
+        DISABLED
+    }
 
     public static ChatConfig get() {
         return INSTANCE;
     }
 
-    private static Path getConfigPath() {;
+    private static Path getConfigPath() {
+        ;
         return Services.platform().getGameDir().resolve("config").resolve("clientchatplus.json");
     }
 

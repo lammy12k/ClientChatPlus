@@ -6,6 +6,7 @@ import net.kyori.adventure.text.format.TextDecoration;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
 import net.minecraft.ChatFormatting;
+import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.HoverEvent;
@@ -58,6 +59,9 @@ public class MessageFormatter {
                 return;
             }
         }
+
+        msg.senderName = extractSenderName(msg.rawText);
+        msg.isMention = cfg.highlightMentions && checkMention(msg.rawText, msg.senderName);
 
         Matcher m = URL_PATTERN.matcher(msg.rawText);
         while (m.find()) {
@@ -172,10 +176,46 @@ public class MessageFormatter {
     static String detectLanguage(String code) {
         String trimmed = code.trim();
         if (trimmed.startsWith("{") || trimmed.startsWith("[")) return "json";
-        if (trimmed.contains("class ") || trimmed.contains("interface ") || trimmed.contains("System.out.") || trimmed.contains("void ")) return "java";
+        if (trimmed.contains("class ") || trimmed.contains("interface ") || trimmed.contains("System.out.") || trimmed.contains("void "))
+            return "java";
         if (trimmed.contains("def ") || (trimmed.contains("import ") && trimmed.contains(":"))) return "python";
         if (trimmed.contains("function ") || trimmed.contains("const ") || trimmed.contains("console.log")) return "js";
         return "text";
+    }
+
+    public static String extractSenderName(String rawText) {
+        Matcher m = SENDER_PREFIX_PATTERN.matcher(rawText);
+        if (!m.find()) return "";
+        String prefix = m.group(1).trim();
+        if (prefix.startsWith("<") && prefix.endsWith(">")) {
+            return prefix.substring(1, prefix.length() - 1).trim();
+        }
+        int closeBracket = prefix.lastIndexOf(']');
+        String afterBracket = closeBracket >= 0 ? prefix.substring(closeBracket + 1).trim() : prefix;
+        afterBracket = afterBracket.replaceFirst("(?:>>|:|»)$", "").trim();
+        int lastSpace = afterBracket.lastIndexOf(' ');
+        return lastSpace >= 0 ? afterBracket.substring(lastSpace + 1).trim() : afterBracket;
+    }
+
+    private static boolean checkMention(String rawText, String sender) {
+        String selfName = "";
+        if (Minecraft.getInstance().getUser() != null) {
+            selfName = Minecraft.getInstance().getUser().getName();
+        }
+        String body = rawText;
+        Matcher prefixMatcher = SENDER_PREFIX_PATTERN.matcher(rawText);
+        if (prefixMatcher.find()) {
+            body = rawText.substring(prefixMatcher.end());
+        }
+        String lowerBody = body.toLowerCase();
+        if (lowerBody.contains("@everyone") || lowerBody.contains("@here")) {
+            return true;
+        }
+        if (!selfName.isEmpty()) {
+            Pattern p = Pattern.compile("(?i)(?:^|[^a-z0-9_])@?" + Pattern.quote(selfName) + "(?:$|[^a-z0-9_])");
+            return p.matcher(body).find();
+        }
+        return false;
     }
 
     public static List<ChatFormattedLine> parse(Component rawComponent) {
@@ -210,11 +250,20 @@ public class MessageFormatter {
 
             String bodyPlain = plain.substring(contentStart);
             boolean isBullet = false;
-            int stripBullet = 0;
+            boolean isQuote = false;
+            int stripPrefix = 0;
 
-            if (cfg.enableMarkdown && bodyPlain.startsWith("- ")) {
-                isBullet = true;
-                stripBullet = 2;
+            if (cfg.enableMarkdown) {
+                if (bodyPlain.startsWith("- ")) {
+                    isBullet = true;
+                    stripPrefix = 2;
+                } else if (bodyPlain.startsWith("> ")) {
+                    isQuote = true;
+                    stripPrefix = 2;
+                } else if (bodyPlain.equals(">")) {
+                    isQuote = true;
+                    stripPrefix = 1;
+                }
             }
 
             List<ChatFormattedLine.ScaledSpan> spans = new ArrayList<>();
@@ -228,7 +277,7 @@ public class MessageFormatter {
                 spans.add(new ChatFormattedLine.ScaledSpan(prefixComp, 1.0f));
             }
 
-            int bodyStartIdx = contentStart + stripBullet;
+            int bodyStartIdx = contentStart + stripPrefix;
             String remainingBody = plain.substring(bodyStartIdx);
             if (cfg.enableMarkdown) {
                 Matcher headingMatcher = INLINE_HEADING_PATTERN.matcher(remainingBody);
@@ -238,7 +287,7 @@ public class MessageFormatter {
                     String marker = headingMatcher.group(1);
                     if (markerStart > 0) {
                         StyledLine normalBefore = line.slice(bodyStartIdx, bodyStartIdx + markerStart);
-                        spans.add(new ChatFormattedLine.ScaledSpan(formatStyledLine(normalBefore, false, cfg), 1.0f));
+                        spans.add(new ChatFormattedLine.ScaledSpan(formatStyledLine(normalBefore, isQuote, cfg), 1.0f));
                     }
                     float headingScale = switch (marker) {
                         case "### " -> 1.15f;
@@ -247,16 +296,16 @@ public class MessageFormatter {
                         case "-# " -> 0.75f;
                         default -> 1.0f;
                     };
-                    boolean isSubtext = marker.equals("-# ");
+                    boolean isMuted = marker.equals("-# ") || isQuote;
                     StyledLine headingPart = line.slice(bodyStartIdx + markerEnd, plain.length());
-                    spans.add(new ChatFormattedLine.ScaledSpan(formatStyledLine(headingPart, isSubtext, cfg), headingScale));
+                    spans.add(new ChatFormattedLine.ScaledSpan(formatStyledLine(headingPart, isMuted, cfg), headingScale));
                 } else {
                     StyledLine bodyLine = line.slice(bodyStartIdx, plain.length());
-                    spans.add(new ChatFormattedLine.ScaledSpan(formatStyledLine(bodyLine, false, cfg), 1.0f));
+                    spans.add(new ChatFormattedLine.ScaledSpan(formatStyledLine(bodyLine, isQuote, cfg), 1.0f));
                 }
             } else {
                 StyledLine bodyLine = line.slice(bodyStartIdx, plain.length());
-                spans.add(new ChatFormattedLine.ScaledSpan(formatStyledLine(bodyLine, false, cfg), 1.0f));
+                spans.add(new ChatFormattedLine.ScaledSpan(formatStyledLine(bodyLine, isQuote, cfg), 1.0f));
             }
             boolean hasAnyText = false;
             for (ChatFormattedLine.ScaledSpan s : spans) {
@@ -266,7 +315,7 @@ public class MessageFormatter {
                 }
             }
             if (hasAnyText || result.isEmpty()) {
-                result.add(new ChatFormattedLine(spans, isBullet));
+                result.add(new ChatFormattedLine(spans, isBullet, isQuote));
             }
         }
         if (result.isEmpty()) {
@@ -274,6 +323,7 @@ public class MessageFormatter {
         }
         return result;
     }
+
     private static Component formatStyledLine(StyledLine slice, boolean isSubtext, ChatConfig cfg) {
         MutableComponent formatted = Component.empty();
         for (StyledRun run : slice.runs) {
@@ -285,6 +335,7 @@ public class MessageFormatter {
         }
         return formatted;
     }
+
     private static Component stripRangesFromComponent(Component root, List<int[]> skipRanges) {
         MutableComponent rebuilt = Component.empty();
         List<StyledLine> lines = splitComponentByNewlines(root);
@@ -315,6 +366,7 @@ public class MessageFormatter {
         }
         return rebuilt;
     }
+
     private static Component formatSegment(String text, Style baseStyle, ChatConfig cfg) {
         if (text.isEmpty()) return Component.empty();
         if (cfg.enableMiniMessage && text.contains("<") && text.contains(">")) {
@@ -328,6 +380,7 @@ public class MessageFormatter {
         appendAutoLinkedText(out, text, baseStyle);
         return out;
     }
+
     private static Component convertAdventureToMinecraft(net.kyori.adventure.text.Component adv, Style parentStyle, boolean applyMarkdown) {
         Style currentStyle = parentStyle;
         TextColor color = adv.color();
@@ -355,6 +408,7 @@ public class MessageFormatter {
         }
         return out;
     }
+
     private static Component parseMarkdownText(String text, Style baseStyle) {
         String preprocessed = UNDERLINE_PRE_PATTERN.matcher(text).replaceAll("\uE000$1\uE001");
         Node document = MARKDOWN_PARSER.parse(preprocessed);
@@ -362,10 +416,12 @@ public class MessageFormatter {
         ChatConfig cfg = ChatConfig.get();
         document.accept(new AbstractVisitor() {
             Style current = baseStyle;
+
             @Override
             public void visit(Text textNode) {
                 appendWithUnderlineTokens(result, textNode.getLiteral(), current);
             }
+
             @Override
             public void visit(StrongEmphasis strong) {
                 Style prev = current;
@@ -373,6 +429,7 @@ public class MessageFormatter {
                 visitChildren(strong);
                 current = prev;
             }
+
             @Override
             public void visit(Emphasis emphasis) {
                 Style prev = current;
@@ -380,6 +437,7 @@ public class MessageFormatter {
                 visitChildren(emphasis);
                 current = prev;
             }
+
             @Override
             public void visit(Image image) {
                 String url = image.getDestination();
@@ -395,6 +453,7 @@ public class MessageFormatter {
                 }
                 result.append(Component.literal("image").withStyle(linkStyle));
             }
+
             @Override
             public void visit(Link link) {
                 String url = link.getDestination();
@@ -429,11 +488,13 @@ public class MessageFormatter {
                 visitChildren(link);
                 current = prev;
             }
+
             @Override
             public void visit(Code code) {
                 Style codeStyle = current.withColor(0xD4D4D4);
                 result.append(Component.literal(" " + code.getLiteral() + " ").withStyle(codeStyle));
             }
+
             @Override
             public void visit(CustomNode customNode) {
                 if (customNode instanceof Strikethrough) {
@@ -445,6 +506,7 @@ public class MessageFormatter {
                     visitChildren(customNode);
                 }
             }
+
             @Override
             public void visit(SoftLineBreak softLineBreak) {
                 result.append(Component.literal(" ").withStyle(current));
@@ -452,6 +514,7 @@ public class MessageFormatter {
         });
         return result;
     }
+
     private static void appendWithUnderlineTokens(MutableComponent target, String text, Style style) {
         int idx = 0;
         while (idx < text.length()) {
@@ -473,6 +536,7 @@ public class MessageFormatter {
             idx = end + 1;
         }
     }
+
     private static void appendAutoLinkedText(MutableComponent target, String text, Style style) {
         if (text.isEmpty()) return;
         ChatConfig cfg = ChatConfig.get();
@@ -517,6 +581,7 @@ public class MessageFormatter {
             target.append(Component.literal(text.substring(lastEnd)).withStyle(style));
         }
     }
+
     private static List<StyledLine> splitComponentByNewlines(Component root) {
         List<StyledLine> lines = new ArrayList<>();
         StyledLine[] current = new StyledLine[]{new StyledLine()};
@@ -536,14 +601,19 @@ public class MessageFormatter {
         lines.add(current[0]);
         return lines;
     }
-    private record StyledRun(String text, Style style) {}
+
+    private record StyledRun(String text, Style style) {
+    }
+
     private static class StyledLine {
         final List<StyledRun> runs = new ArrayList<>();
+
         String getPlainText() {
             StringBuilder sb = new StringBuilder();
             for (StyledRun r : runs) sb.append(r.text);
             return sb.toString();
         }
+
         StyledLine slice(int start, int end) {
             StyledLine out = new StyledLine();
             int pos = 0;

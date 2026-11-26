@@ -5,6 +5,7 @@ import dev.isxander.yacl3.api.ConfigCategory;
 import dev.isxander.yacl3.api.Option;
 import dev.isxander.yacl3.api.OptionDescription;
 import dev.isxander.yacl3.api.YetAnotherConfigLib;
+import dev.isxander.yacl3.api.controller.EnumControllerBuilder;
 import dev.isxander.yacl3.api.controller.FloatSliderControllerBuilder;
 import dev.isxander.yacl3.api.controller.IntegerSliderControllerBuilder;
 import dev.isxander.yacl3.api.controller.TickBoxControllerBuilder;
@@ -50,6 +51,12 @@ public class YaclConfigScreen {
                                 .binding(40, () -> cfg.offsetY, val -> cfg.offsetY = val)
                                 .controller(opt -> IntegerSliderControllerBuilder.create(opt).range(10, 200).step(1))
                                 .build())
+                        .option(Option.<Integer>createBuilder()
+                                .name(Component.literal("Idle Chat Fade Duration"))
+                                .description(OptionDescription.of(Component.literal("Seconds before unfocused messages fade out. Set to 0 to never fade.")))
+                                .binding(10, () -> cfg.idleFadeSeconds, val -> cfg.idleFadeSeconds = val)
+                                .controller(opt -> IntegerSliderControllerBuilder.create(opt).range(0, 60).step(1).formatValue(val -> val == 0 ? Component.literal("Never") : Component.literal(val + "s")))
+                                .build())
                         .build())
                 .category(ConfigCategory.createBuilder()
                         .name(Component.literal("Formatting & Media"))
@@ -87,6 +94,24 @@ public class YaclConfigScreen {
                                 .name(Component.literal("Render Discord File Attachments"))
                                 .description(OptionDescription.of(Component.literal("Display clickable attachment cards for Discord CDN files.")))
                                 .binding(true, () -> cfg.renderDiscordAttachments, val -> cfg.renderDiscordAttachments = val)
+                                .controller(TickBoxControllerBuilder::create)
+                                .build())
+                        .option(Option.<ChatConfig.VideoBackend>createBuilder()
+                                .name(Component.literal("Video Playback Backend"))
+                                .description(OptionDescription.of(Component.literal("Choose which backend plays inline video attachments.")))
+                                .binding(ChatConfig.VideoBackend.AUTO, () -> cfg.videoBackend, val -> cfg.videoBackend = val)
+                                .controller(opt -> EnumControllerBuilder.create(opt).enumClass(ChatConfig.VideoBackend.class))
+                                .build())
+                        .option(Option.<Boolean>createBuilder()
+                                .name(Component.literal("Highlight Mentions"))
+                                .description(OptionDescription.of(Component.literal("Highlight messages mentioning your username, @everyone, or @here with an amber tint.")))
+                                .binding(true, () -> cfg.highlightMentions, val -> cfg.highlightMentions = val)
+                                .controller(TickBoxControllerBuilder::create)
+                                .build())
+                        .option(Option.<Boolean>createBuilder()
+                                .name(Component.literal("Mention Ping Sound"))
+                                .description(OptionDescription.of(Component.literal("Play a subtle sound when a message mentions you.")))
+                                .binding(true, () -> cfg.mentionSound, val -> cfg.mentionSound = val)
                                 .controller(TickBoxControllerBuilder::create)
                                 .build())
                         .option(Option.<Boolean>createBuilder()

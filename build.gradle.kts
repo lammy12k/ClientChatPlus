@@ -9,7 +9,7 @@ allprojects {
     apply(plugin = "idea")
 
     group = "com.kyfstore.ClientChatPlus"
-    version = "0.1.0-SNAPSHOT"
+    version = "0.1.1-SNAPSHOT"
 
     repositories {
         mavenCentral()
@@ -36,9 +36,15 @@ allprojects {
 
     dependencies {
         add("shadowImplementation", "org.commonmark:commonmark:${providers.gradleProperty("commonmark_version").get()}")
-        add("shadowImplementation", "org.commonmark:commonmark-ext-gfm-strikethrough:${providers.gradleProperty("commonmark_version").get()}")
+        add(
+            "shadowImplementation",
+            "org.commonmark:commonmark-ext-gfm-strikethrough:${providers.gradleProperty("commonmark_version").get()}"
+        )
         add("shadowImplementation", "net.kyori:adventure-api:${providers.gradleProperty("adventure_version").get()}")
-        add("shadowImplementation", "net.kyori:adventure-text-minimessage:${providers.gradleProperty("adventure_version").get()}")
+        add(
+            "shadowImplementation",
+            "net.kyori:adventure-text-minimessage:${providers.gradleProperty("adventure_version").get()}"
+        )
         add("shadowImplementation", "uk.co.caprica:vlcj:${providers.gradleProperty("vlcj_version").get()}") {
             exclude(group = "net.java.dev.jna")
         }
@@ -110,7 +116,8 @@ subprojects {
         metadataProperties["mod_id"] = "clientchatplus"
         metadataProperties["mod_name"] = "ClientChatPlus"
         metadataProperties["mod_group_id"] = "com.kyfstore.ClientChatPlus"
-        metadataProperties["mod_description"] = "A modern, Discord-inspired chat overhaul for Minecraft 26.3 (Fabric & NeoForge in one JAR). Features smooth slide animations, Markdown & MiniMessage, syntax-highlighted codeblocks, inline images, animated GIFs, website hover cards, file previews, VLC/WaterMedia video playback, live search, and bookmarks."
+        metadataProperties["mod_description"] =
+            "A modern, Discord-inspired chat overhaul for Minecraft 26.3 (Fabric & NeoForge in one JAR). Features smooth slide animations, Markdown & MiniMessage, syntax-highlighted codeblocks, inline images, animated GIFs, website hover cards, file previews, VLC/WaterMedia video playback, live search, and bookmarks."
 
         inputs.properties(metadataProperties)
 

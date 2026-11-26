@@ -1,47 +1,47 @@
-modLoader="javafml"
-loaderVersion="[1,)"
-license="MIT"
+modLoader = "javafml"
+loaderVersion = "[1,)"
+license = "MIT"
 
 [[mods]]
-modId="${mod_id}"
-version="${version}"
-displayName="${mod_name}"
-authors="lammy12k"
-iconFile="assets/clientchatplus/icon.png"
-iconBlur=false
-bannerFile="assets/clientchatplus/icon.png"
-bannerBlur=false
-description='''
+modId = "${mod_id}"
+version = "${version}"
+displayName = "${mod_name}"
+authors = "lammy12k"
+iconFile = "assets/clientchatplus/icon.png"
+iconBlur = false
+bannerFile = "assets/clientchatplus/icon.png"
+bannerBlur = false
+description = '''
 ${mod_description}
 '''
 
 [[mixins]]
-config="${mod_id}.mixins.json"
+config = "${mod_id}.mixins.json"
 
-[[dependencies.${mod_id}]]
-modId="neoforge"
-type="required"
-versionRange="[${gp.neoforge_version},)"
-ordering="NONE"
-side="BOTH"
+[[dependencies.${ mod_id }]]
+modId = "neoforge"
+type = "required"
+versionRange = "[${gp.neoforge_version},)"
+ordering = "NONE"
+side = "BOTH"
 
-[[dependencies.${mod_id}]]
-modId="minecraft"
-type="required"
-versionRange="${gp.minecraft_version_range}"
-ordering="NONE"
-side="BOTH"
+[[dependencies.${ mod_id }]]
+modId = "minecraft"
+type = "required"
+versionRange = "${gp.minecraft_version_range}"
+ordering = "NONE"
+side = "BOTH"
 
-[[dependencies.${mod_id}]]
-modId="yet_another_config_lib_v3"
-type="required"
-versionRange="[${gp.yacl_version},)"
-ordering="NONE"
-side="BOTH"
+[[dependencies.${ mod_id }]]
+modId = "yet_another_config_lib_v3"
+type = "required"
+versionRange = "[${gp.yacl_version},)"
+ordering = "NONE"
+side = "BOTH"
 
-[[dependencies.${mod_id}]]
-modId="watermedia"
-type="optional"
-versionRange="[0,)"
-ordering="AFTER"
-side="CLIENT"
+[[dependencies.${ mod_id }]]
+modId = "watermedia"
+type = "optional"
+versionRange = "[0,)"
+ordering = "AFTER"
+side = "CLIENT"
