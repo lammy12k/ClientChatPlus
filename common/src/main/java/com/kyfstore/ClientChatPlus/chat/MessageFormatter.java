@@ -212,7 +212,7 @@ public class MessageFormatter {
             return true;
         }
         if (!selfName.isEmpty()) {
-            Pattern p = Pattern.compile("(?i)(?:^|[^a-z0-9_])@?" + Pattern.quote(selfName) + "(?:$|[^a-z0-9_])");
+            Pattern p = Pattern.compile("(?i)(?:^|[^a-z0-9_])@" + Pattern.quote(selfName) + "(?:$|[^a-z0-9_])");
             return p.matcher(body).find();
         }
         return false;
